@@ -38,6 +38,11 @@
       <StatCard label="绿植更换" :value="formatNumber(statistics.replacement_quantity)"
                 :hint="`共 ${formatNumber(statistics.replacement_count)} 次，金额 ${formatCurrency(statistics.replacement_amount)}`"
                 icon="Cherry" />
+      <StatCard label="补植成活"
+                :value="statistics.replanting_survival_rate === null || statistics.replanting_survival_rate === undefined ? '待复核' : formatPercent(statistics.replanting_survival_rate)"
+                :hint="`共 ${formatNumber(statistics.replanting_count)} 批，待复核 ${formatNumber(statistics.replanting_pending_count)} 批`"
+                :tone="(statistics.replanting_pending_count ?? 0) > 0 ? 'warning' : 'info'"
+                icon="Sunrise" />
       <StatCard label="养护任务" :value="formatNumber(taskTotal)" unit="项"
                 :hint="`已完成 ${statistics.task_status.completed || 0} 项，进行中 ${(statistics.task_status.in_progress || 0) + (statistics.task_status.pending || 0)} 项`"
                 tone="info" icon="Tickets" />
@@ -127,6 +132,40 @@
             </el-tag>
           </div>
         </el-tab-pane>
+
+        <el-tab-pane label="近期补植成活" name="replantings">
+          <div class="tab-actions">
+            <el-button link type="primary" @click="goList('replantings')">查看全部补植记录</el-button>
+          </div>
+          <el-table :data="recentReplantings" size="small" empty-text="暂无补植记录">
+            <el-table-column prop="replanting_no" label="编号" width="150" />
+            <el-table-column prop="replant_date" label="补植日期" width="105" />
+            <el-table-column prop="plant_name" label="苗木名称" width="110" />
+            <el-table-column label="数量" width="100">
+              <template #default="{ row }">{{ formatNumber(row.quantity) }} {{ row.unit_label }}</template>
+            </el-table-column>
+            <el-table-column prop="supplier" label="供苗单位" width="120" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.supplier || '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="batch_no" label="批次" width="110">
+              <template #default="{ row }">{{ row.batch_no || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="复核状态" width="100">
+              <template #default="{ row }">
+                <EnumTag group="replanting_review_status" :value="row.review_status"
+                        :label="row.review_status_label" />
+              </template>
+            </el-table-column>
+            <el-table-column label="成活率" width="100" align="center">
+              <template #default="{ row }">
+                <span v-if="row.survival_rate === null" class="rate-pending">待复核</span>
+                <span v-else :class="row.low_survival ? 'rate-low' : 'rate-ok'">
+                  {{ formatPercent(row.survival_rate) }}
+                </span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
       </el-tabs>
     </div>
 
@@ -142,7 +181,7 @@ import { greenSpaceApi } from '@/api'
 import EnumTag from '@/components/common/EnumTag.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import StatCard from '@/components/common/StatCard.vue'
-import { formatArea, formatCurrency, formatDate, formatHours, formatNumber } from '@/utils/format'
+import { formatArea, formatCurrency, formatDate, formatHours, formatNumber, formatPercent } from '@/utils/format'
 
 import GreenSpaceFormDialog from './GreenSpaceFormDialog.vue'
 
@@ -153,10 +192,11 @@ const loading = ref(false)
 const activeTab = ref('tasks')
 
 const space = ref({})
-const statistics = ref({ task_status: {}, record_count: 0, total_work_hours: 0, replacement_count: 0, replacement_quantity: 0, replacement_amount: 0 })
+const statistics = ref({ task_status: {}, record_count: 0, total_work_hours: 0, replacement_count: 0, replacement_quantity: 0, replacement_amount: 0, replanting_count: 0, replanting_pending_count: 0, replanting_survival_rate: null })
 const recentTasks = ref([])
 const recentRecords = ref([])
 const recentReplacements = ref([])
+const recentReplantings = ref([])
 const replacementSummary = ref([])
 
 const taskTotal = computed(() =>
@@ -172,6 +212,7 @@ async function load() {
     recentTasks.value = data.recent_tasks || []
     recentRecords.value = data.recent_records || []
     recentReplacements.value = data.recent_replacements || []
+    recentReplantings.value = data.recent_replantings || []
     replacementSummary.value = data.replacement_summary || []
   } finally {
     loading.value = false
@@ -182,6 +223,7 @@ const LIST_ROUTES = {
   tasks: 'task-list',
   records: 'record-list',
   replacements: 'replacement-list',
+  replantings: 'replanting-list',
 }
 
 function goList(name) {
@@ -208,5 +250,20 @@ onMounted(load)
 
 .summary-tag {
   margin-right: 4px;
+}
+
+.rate-low {
+  color: #f56c6c;
+  font-weight: 600;
+}
+
+.rate-ok {
+  color: #48a17a;
+  font-weight: 600;
+}
+
+.rate-pending {
+  color: #909399;
+  font-size: 12px;
 }
 </style>

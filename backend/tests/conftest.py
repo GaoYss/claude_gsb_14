@@ -1,7 +1,7 @@
 """测试夹具：内存 SQLite + 常用业务数据工厂。"""
 
 import random
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -146,6 +146,34 @@ def make_replacement(make_space):
             payload["maintenance_record_id"] = record.id
         payload.update(overrides)
         return PlantReplacementService.create(payload)
+
+    return _make
+
+
+@pytest.fixture()
+def make_replanting(make_space):
+    from app.services import ReplantingService
+
+    def _make(space=None, record=None, **overrides):
+        if record is not None:
+            space = record.green_space
+        space = space or make_space()
+        payload = {
+            "green_space_id": space.id,
+            "plant_name": "红叶石楠",
+            "plant_category": "shrub",
+            "spec": "冠幅 60-80cm",
+            "quantity": 100,
+            "unit": "plant",
+            "batch_no": "P20260701-01",
+            "supplier": "萧山苗木合作社",
+            "replant_date": date.today() - timedelta(days=40),
+            "review_due_date": date.today() - timedelta(days=10),
+        }
+        if record is not None:
+            payload["maintenance_record_id"] = record.id
+        payload.update(overrides)
+        return ReplantingService.create(payload)
 
     return _make
 

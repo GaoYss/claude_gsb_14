@@ -1,11 +1,11 @@
 """绿地台账业务逻辑。"""
 
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, func, or_
 
 from ..constants import ENUM_GROUPS, GREEN_SPACE_STATUS
 from ..errors import ConflictError
 from ..extensions import db
-from ..models import GreenSpace, MaintenanceRecord, MaintenanceTask, PlantReplacement
+from ..models import GreenSpace, MaintenanceRecord, MaintenanceTask, PlantReplacement, ReplantingRecord
 from ..models.maintenance_task import OPEN_STATUSES
 from ..utils.dates import format_date, today
 from ..utils.numbers import to_float
@@ -92,6 +92,12 @@ class GreenSpaceService(BaseService):
             .correlate(GreenSpace)
             .scalar_subquery()
         )
+        replanting_count = (
+            db.select(func.count(ReplantingRecord.id))
+            .where(ReplantingRecord.green_space_id == GreenSpace.id)
+            .correlate(GreenSpace)
+            .scalar_subquery()
+        )
         last_maintenance = (
             db.select(func.max(MaintenanceRecord.record_date))
             .where(MaintenanceRecord.green_space_id == GreenSpace.id)
@@ -105,6 +111,7 @@ class GreenSpaceService(BaseService):
             open_task_count.label("open_task_count"),
             record_count.label("record_count"),
             replacement_count.label("replacement_count"),
+            replanting_count.label("replanting_count"),
             last_maintenance.label("last_maintenance_date"),
         )
         query = cls._apply_filters(query, filters)
@@ -113,13 +120,15 @@ class GreenSpaceService(BaseService):
 
     @classmethod
     def serialize_row(cls, row):
-        space, task_count, open_task_count, record_count, replacement_count, last_date = row
+        (space, task_count, open_task_count, record_count,
+         replacement_count, replanting_count, last_date) = row
         data = space.to_dict()
         data["statistics"] = {
             "task_count": task_count or 0,
             "open_task_count": open_task_count or 0,
             "record_count": record_count or 0,
             "replacement_count": replacement_count or 0,
+            "replanting_count": replanting_count or 0,
             "last_maintenance_date": format_date(last_date),
         }
         return data
@@ -177,6 +186,56 @@ class GreenSpaceService(BaseService):
             func.coalesce(func.sum(PlantReplacement.amount), 0),
         ).filter(PlantReplacement.green_space_id == space.id).one()
 
+        replanting_stats = db.session.query(
+            func.count(ReplantingRecord.id),
+            func.coalesce(func.sum(ReplantingRecord.quantity), 0),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                ReplantingRecord.reviewed_date.is_not(None),
+                                ReplantingRecord.survivor_quantity.is_not(None),
+                            ),
+                            ReplantingRecord.survivor_quantity,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                ReplantingRecord.reviewed_date.is_not(None),
+                                ReplantingRecord.survivor_quantity.is_not(None),
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                ReplantingRecord.reviewed_date.is_not(None),
+                                ReplantingRecord.survivor_quantity.is_not(None),
+                            ),
+                            ReplantingRecord.quantity,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+        ).filter(ReplantingRecord.green_space_id == space.id).one()
+
         task_rows = (
             db.session.query(MaintenanceTask.status, func.count(MaintenanceTask.id))
             .filter(MaintenanceTask.green_space_id == space.id)
@@ -215,6 +274,21 @@ class GreenSpaceService(BaseService):
             .limit(5)
             .all()
         )
+        recent_replantings = (
+            db.session.query(ReplantingRecord)
+            .filter(ReplantingRecord.green_space_id == space.id)
+            .order_by(ReplantingRecord.replant_date.desc(), ReplantingRecord.id.desc())
+            .limit(5)
+            .all()
+        )
+
+        (replanting_count, replanting_quantity, replanting_survivors,
+         replanting_reviewed, replanting_reviewed_quantity) = replanting_stats
+        replanting_quantity = to_float(replanting_quantity) or 0
+        replanting_survivors = to_float(replanting_survivors) or 0
+        replanting_reviewed_quantity = to_float(replanting_reviewed_quantity) or 0
+        replanting_reviewed = replanting_reviewed or 0
+        replanting_pending = (replanting_count or 0) - replanting_reviewed
 
         return {
             "green_space": space.to_dict(detail=True),
@@ -225,6 +299,14 @@ class GreenSpaceService(BaseService):
                 "replacement_count": replacement_stats[0] or 0,
                 "replacement_quantity": to_float(replacement_stats[1]) or 0,
                 "replacement_amount": to_float(replacement_stats[2]) or 0,
+                "replanting_count": replanting_count or 0,
+                "replanting_quantity": replanting_quantity,
+                "replanting_reviewed_count": replanting_reviewed,
+                "replanting_pending_count": max(replanting_pending, 0),
+                "replanting_survival_rate": (
+                    round(replanting_survivors / replanting_reviewed_quantity * 100, 1)
+                    if replanting_reviewed_quantity else None
+                ),
                 "task_status": task_status,
                 "is_maintenance_overdue": (
                     record_stats[2] is None or (today() - record_stats[2]).days > 30
@@ -243,6 +325,7 @@ class GreenSpaceService(BaseService):
             "recent_tasks": [item.to_dict() for item in recent_tasks],
             "recent_records": [item.to_dict() for item in recent_records],
             "recent_replacements": [item.to_dict() for item in recent_replacements],
+            "recent_replantings": [item.to_dict() for item in recent_replantings],
         }
 
     # ------------------------------------------------------------ 写入
@@ -262,11 +345,16 @@ class GreenSpaceService(BaseService):
             .filter(PlantReplacement.green_space_id == space.id)
             .scalar()
             or 0,
+            "replanting_record": db.session.query(func.count(ReplantingRecord.id))
+            .filter(ReplantingRecord.green_space_id == space.id)
+            .scalar()
+            or 0,
         }
         if sum(counts.values()) and not force:
             raise ConflictError(
                 "该绿地已存在养护任务 {maintenance_task} 条、养护记录 {maintenance_record} 条、"
-                "绿植更换记录 {plant_replacement} 条，删除将一并清除，请确认后重试".format(**counts),
+                "绿植更换记录 {plant_replacement} 条、补植记录 {replanting_record} 条，"
+                "删除将一并清除，请确认后重试".format(**counts),
                 details=counts,
             )
         db.session.delete(space)

@@ -18,6 +18,12 @@ def test_overview_reflects_seeded_data(api, seeded):
     assert data["replacement"]["total"] == seeded["plant_replacement"]
     assert data["replacement"]["total_amount"] > 0
 
+    replanting = data["replanting"]
+    assert replanting["total"] == seeded["replanting_record"]
+    assert replanting["reviewed_count"] + replanting["pending_count"] + replanting["overdue_count"] == replanting["total"]
+    assert replanting["low_survival_threshold"] == 85.0
+    assert replanting["low_survival_count"] >= 1
+
 
 def test_overdue_and_due_soon_reminders(api, make_space, make_task):
     space = make_space()
@@ -80,7 +86,9 @@ def test_dashboard_returns_all_sections(api, seeded):
     assert set(data) == {
         "overview", "distributions", "trends", "ranking",
         "overdue_tasks", "upcoming_tasks", "recent_activity",
+        "replanting_reviews",
     }
     assert len(data["trends"]) == 6
     assert data["recent_activity"]["records"]
     assert data["recent_activity"]["replacements"]
+    assert isinstance(data["replanting_reviews"], list)

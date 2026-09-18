@@ -10,6 +10,7 @@ from ..models import GreenSpace, MaintenanceRecord, MaintenanceTask, PlantReplac
 from ..models.maintenance_task import OPEN_STATUSES
 from ..utils.dates import today
 from ..utils.numbers import to_float
+from .replanting_service import ReplantingService
 
 
 class StatisticsService:
@@ -96,6 +97,8 @@ class StatisticsService:
             func.coalesce(func.sum(PlantReplacement.amount), 0),
         ).filter(PlantReplacement.replace_date >= year_start).one()
 
+        replanting_totals = ReplantingService.totals({})
+
         completed = task_status.get("completed", 0)
         return {
             "generated_at": f"{current:%Y-%m-%d}",
@@ -127,6 +130,18 @@ class StatisticsService:
                 "month_amount": to_float(month_amount) or 0,
                 "year_quantity": to_float(year_quantity) or 0,
                 "year_amount": to_float(year_amount) or 0,
+            },
+            "replanting": {
+                "total": replanting_totals["total_count"],
+                "total_quantity": replanting_totals["total_quantity"],
+                "reviewed_count": replanting_totals["reviewed_count"],
+                "pending_count": replanting_totals["pending_count"],
+                "overdue_count": replanting_totals["overdue_count"],
+                "reviewed_quantity": replanting_totals["reviewed_quantity"],
+                "survivor_quantity": replanting_totals["survivor_quantity"],
+                "survival_rate": replanting_totals["survival_rate"],
+                "low_survival_count": replanting_totals["low_survival_count"],
+                "low_survival_threshold": replanting_totals["low_survival_threshold"],
             },
         }
 
@@ -398,4 +413,7 @@ class StatisticsService:
             "overdue_tasks": StatisticsService.overdue_tasks(),
             "upcoming_tasks": StatisticsService.upcoming_tasks(),
             "recent_activity": StatisticsService.recent_activity(),
+            "replanting_reviews": [
+                item.to_dict() for item in ReplantingService.due_for_review()
+            ],
         }

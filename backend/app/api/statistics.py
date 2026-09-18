@@ -2,7 +2,7 @@
 
 from flask import Blueprint, request
 
-from ..services import StatisticsService
+from ..services import ReplantingService, StatisticsService
 from ..utils.responses import ok
 
 bp = Blueprint("statistics", __name__)
@@ -49,9 +49,12 @@ def ranking():
 
 @bp.get("/statistics/reminders")
 def reminders():
-    """逾期与即将到期的养护任务提醒。"""
+    """逾期与即将到期的养护任务、待复核补植作业提醒。"""
 
     return ok({
         "overdue": StatisticsService.overdue_tasks(),
         "upcoming": StatisticsService.upcoming_tasks(),
+        "replanting_reviews": [
+            item.to_dict() for item in ReplantingService.due_for_review()
+        ],
     })

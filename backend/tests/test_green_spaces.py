@@ -113,6 +113,9 @@ def test_detail_and_profile_aggregate_related_data(api, make_task, make_record):
     assert data["statistics"]["last_maintenance_date"] == "2026-03-20"
     assert data["statistics"]["task_status"]["completed"] == 1
     assert len(data["recent_records"]) == 2
+    assert data["statistics"]["replanting_count"] == 0
+    assert data["statistics"]["replanting_survival_rate"] is None
+    assert data["recent_replantings"] == []
 
 
 def test_delete_is_blocked_until_force(api, make_task):
@@ -124,5 +127,10 @@ def test_delete_is_blocked_until_force(api, make_task):
     assert response.get_json()["data"]["maintenance_task"] == 1
 
     data = api.data(api.delete(f"/api/v1/green-spaces/{space_id}", force="true"))
-    assert data == {"maintenance_task": 1, "maintenance_record": 0, "plant_replacement": 0}
+    assert data == {
+        "maintenance_task": 1,
+        "maintenance_record": 0,
+        "plant_replacement": 0,
+        "replanting_record": 0,
+    }
     assert api.get(f"/api/v1/green-spaces/{space_id}").status_code == 404

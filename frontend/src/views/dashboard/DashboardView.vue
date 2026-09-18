@@ -50,6 +50,13 @@
         tone="info"
         icon="Money"
       />
+      <StatCard
+        label="补植成活率（已复核）"
+        :value="replantingRate"
+        :hint="`待复核 ${formatNumber(overview.replanting.pending_count)} 批、逾期 ${formatNumber(overview.replanting.overdue_count)} 批，偏低 ${formatNumber(overview.replanting.low_survival_count)} 批`"
+        :tone="overview.replanting.overdue_count > 0 || overview.replanting.low_survival_count > 0 ? 'danger' : 'default'"
+        icon="Sunrise"
+      />
     </div>
 
     <div class="chart-grid">
@@ -100,6 +107,41 @@
           </el-table-column>
           <el-table-column label="更换量" width="100">
             <template #default="{ row }">{{ formatNumber(row.replacement_quantity) }}</template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </div>
+
+    <div class="dashboard-columns">
+      <div class="panel">
+        <div class="table-toolbar">
+          <span class="panel-title">待复核补植作业</span>
+          <el-link type="primary" :underline="false" @click="router.push('/replanting')">
+            进入补植成活
+          </el-link>
+        </div>
+        <el-table :data="dashboard.replanting_reviews" size="small" empty-text="暂无到期复核">
+          <el-table-column prop="replanting_no" label="编号" width="150" />
+          <el-table-column label="绿地" min-width="130">
+            <template #default="{ row }">{{ row.green_space?.name || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="plant_name" label="苗木" width="110" />
+          <el-table-column prop="supplier" label="供苗单位" min-width="120" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.supplier || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="补植数量" width="100">
+            <template #default="{ row }">{{ formatNumber(row.quantity) }} {{ row.unit_label }}</template>
+          </el-table-column>
+          <el-table-column label="约定复核" width="110">
+            <template #default="{ row }">
+              <span class="overdue-days">{{ row.review_due_date }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="100">
+            <template #default="{ row }">
+              <EnumTag group="replanting_review_status" :value="row.review_status"
+                      :label="row.review_status_label" />
+            </template>
           </el-table-column>
         </el-table>
       </div>
@@ -177,6 +219,7 @@ function emptyDashboard() {
       task: { total: 0, open_count: 0, overdue_count: 0, due_soon_count: 0, completion_rate: 0, by_status: {} },
       record: { total: 0, month_count: 0, month_work_hours: 0, total_work_hours: 0 },
       replacement: { total: 0, month_count: 0, month_quantity: 0, month_amount: 0, year_amount: 0, total_amount: 0 },
+      replanting: { total: 0, reviewed_count: 0, pending_count: 0, overdue_count: 0, survivor_quantity: 0, survival_rate: null, low_survival_count: 0, low_survival_threshold: 85 },
     },
     distributions: {
       green_space_by_type: [],
@@ -189,10 +232,16 @@ function emptyDashboard() {
     overdue_tasks: [],
     upcoming_tasks: [],
     recent_activity: { records: [], replacements: [] },
+    replanting_reviews: [],
   }
 }
 
 const overview = computed(() => dashboard.value.overview)
+
+const replantingRate = computed(() => {
+  const rate = overview.value.replanting.survival_rate
+  return rate === null || rate === undefined ? '-' : formatPercent(rate)
+})
 
 const trendChart = computed(() => trendOption(dashboard.value.trends || []))
 

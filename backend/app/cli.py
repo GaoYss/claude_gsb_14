@@ -17,6 +17,7 @@ from .services import (
     MaintenanceRecordService,
     MaintenanceTaskService,
     PlantReplacementService,
+    ReplantingService,
 )
 
 SPACE_SEEDS = [
@@ -163,6 +164,12 @@ OLD_STATUS = ["dead", "dying", "diseased", "aging", "normal"]
 WEATHERS = ["sunny", "cloudy", "overcast", "rain", "windy"]
 WORKERS = ["王海涛", "李建民", "张凤英", "吴国强", "何丽萍", "赵春生", "孙明华", "许娟"]
 SUPPLIERS = ["萧山苗木合作社", "临安绿源苗圃", "余杭花卉基地", "杭州城西园艺公司"]
+REPLANTING_DEATH_REASONS = [
+    "drought", "waterlogging", "disease", "trample", "traffic",
+    "poor_seedling", "construction", "winter", "other",
+]
+# 该供苗单位的苗木成活率系统性偏低，用于演示汇总中的偏低标记
+LOW_SURVIVAL_SUPPLIER = "余杭花卉基地"
 
 
 def register_cli(app):
@@ -207,7 +214,8 @@ def seed_command(reset, seed_value):
     summary = generate_demo_data(random.Random(seed_value))
     click.echo(
         "演示数据写入完成：绿地 {green_space} 处、养护任务 {maintenance_task} 条、"
-        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条".format(**summary)
+        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条、"
+        "补植记录 {replanting_record} 条".format(**summary)
     )
 
 
@@ -220,6 +228,7 @@ def generate_demo_data(rng):
         "maintenance_task": 0,
         "maintenance_record": 0,
         "plant_replacement": 0,
+        "replanting_record": 0,
     }
 
     for index, space_seed in enumerate(SPACE_SEEDS):
@@ -291,6 +300,46 @@ def generate_demo_data(rng):
                     })
                     counts["plant_replacement"] += 1
 
+            # 补植成活跟踪：补植类任务必登记，其他养护任务少量登记
+            replant_chance = 0.95 if task_type == "replant" else 0.3
+            if rng.random() < replant_chance:
+                plant_name, category, spec, unit = rng.choice(PLANT_POOL)
+                quantity = rng.choice([20, 45, 60, 120, 260, 400])
+                supplier = LOW_SURVIVAL_SUPPLIER if rng.random() < 0.3 else rng.choice(SUPPLIERS)
+                replant_date = record_date + timedelta(days=rng.randint(0, 3))
+                review_due = replant_date + timedelta(days=rng.choice([30, 45, 60]))
+                replanting_payload = {
+                    "green_space_id": space.id,
+                    "maintenance_record_id": record.id,
+                    "plant_name": plant_name,
+                    "plant_category": category,
+                    "spec": spec,
+                    "quantity": quantity,
+                    "unit": unit,
+                    "batch_no": f"{replant_date:%Y%m}-{rng.randint(1, 6):02d}",
+                    "supplier": supplier,
+                    "replant_date": replant_date,
+                    "review_due_date": review_due,
+                    "operator": rng.choice(WORKERS),
+                }
+                # 约定复核期已过：约 80% 已完成复核，其余保留为逾期未核
+                if review_due <= today_ and rng.random() < 0.8:
+                    rate = (
+                        rng.uniform(0.55, 0.8)
+                        if supplier == LOW_SURVIVAL_SUPPLIER
+                        else rng.uniform(0.88, 1.0)
+                    )
+                    survivor = min(max(int(round(quantity * rate / 5) * 5), 0), quantity)
+                    replanting_payload["reviewed_date"] = review_due + timedelta(
+                        days=rng.randint(0, 7)
+                    )
+                    replanting_payload["survivor_quantity"] = survivor
+                    if survivor < quantity:
+                        replanting_payload["death_reason"] = rng.choice(REPLANTING_DEATH_REASONS)
+                        replanting_payload["death_remark"] = "复核抽样清点，已安排二次补植。"
+                ReplantingService.create(replanting_payload)
+                counts["replanting_record"] += 1
+
         # 日常巡查类记录（不挂任务），保留独立录入场景
         for _ in range(rng.randint(1, 3)):
             MaintenanceRecordService.create({
@@ -322,6 +371,84 @@ def generate_demo_data(rng):
             "status": "cancelled",
         })
         counts["maintenance_task"] += 1
+
+    # 补植成活跟踪的固定场景：低成活率供苗单位（同一单位两个批次均偏低）、
+    # 正常供苗单位、逾期未核与待复核，保证汇总标记与看板提醒可复现。
+    active_spaces = (
+        db.session.query(GreenSpace)
+        .filter(GreenSpace.status != "archived")
+        .order_by(GreenSpace.id.asc())
+        .limit(2)
+        .all()
+    )
+    if active_spaces:
+        fixed_replantings = {
+            active_spaces[0].id: [
+                {
+                    "plant_name": "金森女贞", "plant_category": "shrub", "spec": "H40cm",
+                    "quantity": 100, "unit": "plant", "batch_no": "B-202607-01",
+                    "supplier": LOW_SURVIVAL_SUPPLIER,
+                    "replant_date": today_ - timedelta(days=60),
+                    "review_due_date": today_ - timedelta(days=30),
+                    "reviewed_date": today_ - timedelta(days=28),
+                    "survivor_quantity": 70, "death_reason": "poor_seedling",
+                    "death_remark": "起苗土球偏小，缓苗失败集中在同一批次。",
+                },
+                {
+                    "plant_name": "香樟", "plant_category": "tree", "spec": "胸径 8-10cm",
+                    "quantity": 20, "unit": "plant", "batch_no": "B-202607-02",
+                    "supplier": "萧山苗木合作社",
+                    "replant_date": today_ - timedelta(days=58),
+                    "review_due_date": today_ - timedelta(days=28),
+                    "reviewed_date": today_ - timedelta(days=26),
+                    "survivor_quantity": 19, "death_reason": "disease",
+                },
+                {
+                    "plant_name": "麦冬", "plant_category": "ground", "spec": "3-5 芽/丛",
+                    "quantity": 300, "unit": "square_meter", "batch_no": "B-202608-05",
+                    "supplier": "临安绿源苗圃",
+                    "replant_date": today_ - timedelta(days=40),
+                    "review_due_date": today_ - timedelta(days=10),
+                },
+                {
+                    "plant_name": "时令花卉", "plant_category": "flower", "spec": "杯苗",
+                    "quantity": 80, "unit": "pot", "batch_no": "B-202609-03",
+                    "supplier": "杭州城西园艺公司",
+                    "replant_date": today_ - timedelta(days=10),
+                    "review_due_date": today_ + timedelta(days=20),
+                },
+            ],
+        }
+        if len(active_spaces) >= 2:
+            fixed_replantings[active_spaces[1].id] = [
+                {
+                    "plant_name": "红叶石楠", "plant_category": "shrub", "spec": "冠幅 60-80cm",
+                    "quantity": 60, "unit": "plant", "batch_no": "B-202607-09",
+                    "supplier": LOW_SURVIVAL_SUPPLIER,
+                    "replant_date": today_ - timedelta(days=55),
+                    "review_due_date": today_ - timedelta(days=25),
+                    "reviewed_date": today_ - timedelta(days=23),
+                    "survivor_quantity": 45, "death_reason": "poor_seedling",
+                    "death_remark": "同批次苗木长势弱，建议暂停采购该批次。",
+                },
+                {
+                    "plant_name": "黄山栾树", "plant_category": "tree", "spec": "胸径 10-12cm",
+                    "quantity": 12, "unit": "plant", "batch_no": "B-202607-11",
+                    "supplier": "临安绿源苗圃",
+                    "replant_date": today_ - timedelta(days=52),
+                    "review_due_date": today_ - timedelta(days=22),
+                    "reviewed_date": today_ - timedelta(days=20),
+                    "survivor_quantity": 12,
+                },
+            ]
+        for space_id, rows in fixed_replantings.items():
+            for row in rows:
+                ReplantingService.create({
+                    "green_space_id": space_id,
+                    "operator": "戴伟民",
+                    **row,
+                })
+                counts["replanting_record"] += 1
 
     db.session.commit()
     return counts

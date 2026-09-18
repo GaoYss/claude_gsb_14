@@ -130,6 +130,28 @@ MEASURE_UNIT = EnumGroup("measure_unit", [
     ("clump", "丛"),
 ])
 
+# ---------------------------------------------------------------- 补植成活
+REPLANTING_DEATH_REASON = EnumGroup("replanting_death_reason", [
+    ("drought", "干旱缺水"),
+    ("waterlogging", "积水烂根"),
+    ("disease", "病虫害"),
+    ("trample", "人为踩踏"),
+    ("traffic", "车辆碾压"),
+    ("poor_seedling", "苗木质量"),
+    ("construction", "施工破坏"),
+    ("winter", "冻害"),
+    ("other", "其他原因"),
+])
+
+REPLANTING_REVIEW_STATUS = EnumGroup("replanting_review_status", [
+    ("pending", "待复核"),
+    ("overdue", "逾期未核"),
+    ("done", "已复核"),
+])
+
+# 已复核批次成活率低于该阈值（85%）时在汇总中标记偏低
+LOW_SURVIVAL_THRESHOLD = 85.0
+
 # 前端下拉与文档共用的一份字典清单
 ENUM_GROUPS = {
     "green_space_type": GREEN_SPACE_TYPE,
@@ -144,6 +166,8 @@ ENUM_GROUPS = {
     "replacement_reason": REPLACEMENT_REASON,
     "old_plant_status": OLD_PLANT_STATUS,
     "measure_unit": MEASURE_UNIT,
+    "replanting_death_reason": REPLANTING_DEATH_REASON,
+    "replanting_review_status": REPLANTING_REVIEW_STATUS,
 }
 
 
