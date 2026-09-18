@@ -44,6 +44,12 @@ const routes = [
         component: () => import('@/views/replacement/ReplacementListView.vue'),
         meta: { title: '绿植更换', icon: 'Cherry' },
       },
+      {
+        path: 'replantings',
+        name: 'replanting-list',
+        component: () => import('@/views/replanting/ReplantingListView.vue'),
+        meta: { title: '补植跟踪', icon: 'Sunrise' },
+      },
     ],
   },
   {

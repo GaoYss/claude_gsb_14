@@ -151,6 +151,36 @@ def make_replacement(make_space):
 
 
 @pytest.fixture()
+def make_replanting(make_space):
+    from app.services import ReplantingService
+
+    def _make(space=None, record=None, **overrides):
+        if record is not None:
+            space = record.green_space
+        space = space or make_space()
+        payload = {
+            "green_space_id": space.id,
+            "plant_name": "红叶石楠",
+            "plant_category": "shrub",
+            "spec": "冠幅 80-100cm",
+            "quantity": 100,
+            "unit": "plant",
+            "source": "nursery",
+            "supplier": "萧山苗木合作社",
+            "batch_no": "XS-2026-03",
+            "replant_date": date(2026, 3, 15),
+            "review_deadline": date(2026, 12, 31),
+            "operator": "王海涛",
+        }
+        if record is not None:
+            payload["maintenance_record_id"] = record.id
+        payload.update(overrides)
+        return ReplantingService.create(payload)
+
+    return _make
+
+
+@pytest.fixture()
 def seeded(app):
     """写入演示数据（固定随机种子，保证断言稳定）。"""
 

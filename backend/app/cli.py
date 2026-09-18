@@ -17,6 +17,7 @@ from .services import (
     MaintenanceRecordService,
     MaintenanceTaskService,
     PlantReplacementService,
+    ReplantingService,
 )
 
 SPACE_SEEDS = [
@@ -163,6 +164,10 @@ OLD_STATUS = ["dead", "dying", "diseased", "aging", "normal"]
 WEATHERS = ["sunny", "cloudy", "overcast", "rain", "windy"]
 WORKERS = ["王海涛", "李建民", "张凤英", "吴国强", "何丽萍", "赵春生", "孙明华", "许娟"]
 SUPPLIERS = ["萧山苗木合作社", "临安绿源苗圃", "余杭花卉基地", "杭州城西园艺公司"]
+PLANT_SOURCES = ["nursery", "base", "transfer", "market"]
+BATCH_NUMBERS = ["2026春供-01", "2026春供-02", "2026补植-03", "2026补植-04"]
+DEATH_CAUSES = ["drought", "waterlogging", "disease", "plant_quality", "transplant", "weather"]
+SURVIVAL_RATES = [1.0, 0.98, 0.95, 0.92, 0.88, 0.82, 0.75]
 
 
 def register_cli(app):
@@ -207,7 +212,8 @@ def seed_command(reset, seed_value):
     summary = generate_demo_data(random.Random(seed_value))
     click.echo(
         "演示数据写入完成：绿地 {green_space} 处、养护任务 {maintenance_task} 条、"
-        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条".format(**summary)
+        "养护记录 {maintenance_record} 条、绿植更换 {plant_replacement} 条、"
+        "补植记录 {replanting} 条".format(**summary)
     )
 
 
@@ -220,6 +226,7 @@ def generate_demo_data(rng):
         "maintenance_task": 0,
         "maintenance_record": 0,
         "plant_replacement": 0,
+        "replanting": 0,
     }
 
     for index, space_seed in enumerate(SPACE_SEEDS):
@@ -307,6 +314,82 @@ def generate_demo_data(rng):
                 "quality_result": "qualified",
             })
             counts["maintenance_record"] += 1
+
+        # 补植登记：约定补植后 30 天为复核期，到期的记录登记成活数量
+        for _ in range(rng.randint(1, 2)):
+            plant_name, category, spec, unit = rng.choice(PLANT_POOL)
+            quantity = rng.choice([50, 100, 200, 400])
+            replant_date = today_ - timedelta(days=rng.randint(12, 150))
+            review_deadline = replant_date + timedelta(days=30)
+            replanting = ReplantingService.create({
+                "green_space_id": space.id,
+                "plant_name": plant_name,
+                "plant_category": category,
+                "spec": spec,
+                "quantity": quantity,
+                "unit": unit,
+                "source": rng.choice(PLANT_SOURCES),
+                "supplier": rng.choice(SUPPLIERS),
+                "batch_no": rng.choice(BATCH_NUMBERS),
+                "replant_date": replant_date,
+                "review_deadline": review_deadline,
+                "operator": rng.choice(WORKERS),
+            })
+            counts["replanting"] += 1
+            # 已到复核期的记录按概率完成复核
+            if review_deadline < today_ and rng.random() < 0.85:
+                rate = rng.choice(SURVIVAL_RATES)
+                survived = int(quantity * rate)
+                review_payload = {"survived_quantity": survived}
+                if survived < quantity:
+                    review_payload["death_cause"] = rng.choice(DEATH_CAUSES)
+                ReplantingService.register_review(
+                    replanting.id,
+                    {**review_payload, "reviewed_date": review_deadline + timedelta(days=rng.randint(0, 5))},
+                )
+
+    # 固定两条典型场景：一条成活率偏低、一条超过复核期仍未登记
+    spaces = db.session.query(GreenSpace).order_by(GreenSpace.id.asc()).all()
+    open_spaces = [item for item in spaces if item.status != "archived"]
+    if open_spaces:
+        low = ReplantingService.create({
+            "green_space_id": open_spaces[0].id,
+            "plant_name": "金森女贞",
+            "plant_category": "shrub",
+            "spec": "H40cm",
+            "quantity": 200,
+            "unit": "square_meter",
+            "source": "nursery",
+            "supplier": "杭州城西园艺公司",
+            "batch_no": "2026质量跟踪-01",
+            "replant_date": today_ - timedelta(days=45),
+            "review_deadline": today_ - timedelta(days=15),
+            "operator": "王海涛",
+            "remark": "用于供苗质量跟踪的重点批次。",
+        })
+        counts["replanting"] += 1
+        ReplantingService.register_review(low.id, {
+            "survived_quantity": 142,
+            "reviewed_date": today_ - timedelta(days=13),
+            "death_cause": "plant_quality",
+            "death_detail": "部分苗木起苗时土球松散，栽植后连续死苗。",
+        })
+    if len(open_spaces) > 1:
+        ReplantingService.create({
+            "green_space_id": open_spaces[1].id,
+            "plant_name": "麦冬",
+            "plant_category": "ground",
+            "spec": "3-5 芽/丛",
+            "quantity": 300,
+            "unit": "square_meter",
+            "source": "base",
+            "supplier": "余杭花卉基地",
+            "batch_no": "2026逾期未检-01",
+            "replant_date": today_ - timedelta(days=40),
+            "review_deadline": today_ - timedelta(days=10),
+            "operator": "李建民",
+        })
+        counts["replanting"] += 1
 
     # 一条已取消任务，覆盖全部状态场景
     first_space = db.session.query(GreenSpace).order_by(GreenSpace.id.asc()).first()

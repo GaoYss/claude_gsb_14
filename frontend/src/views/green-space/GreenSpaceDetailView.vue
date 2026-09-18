@@ -38,6 +38,11 @@
       <StatCard label="绿植更换" :value="formatNumber(statistics.replacement_quantity)"
                 :hint="`共 ${formatNumber(statistics.replacement_count)} 次，金额 ${formatCurrency(statistics.replacement_amount)}`"
                 icon="Cherry" />
+      <StatCard label="补植成活"
+                :value="statistics.replanting_rate === null || statistics.replanting_rate === undefined ? '—' : `${statistics.replanting_rate}%`"
+                :hint="`共 ${formatNumber(statistics.replanting_count)} 批，已复核 ${formatNumber(statistics.replanting_reviewed)} 批`"
+                :tone="statistics.replanting_rate !== null && statistics.replanting_rate < 85 ? 'danger' : 'default'"
+                icon="Sunrise" />
       <StatCard label="养护任务" :value="formatNumber(taskTotal)" unit="项"
                 :hint="`已完成 ${statistics.task_status.completed || 0} 项，进行中 ${(statistics.task_status.in_progress || 0) + (statistics.task_status.pending || 0)} 项`"
                 tone="info" icon="Tickets" />
@@ -127,6 +132,35 @@
             </el-tag>
           </div>
         </el-tab-pane>
+
+        <el-tab-pane label="近期补植与成活" name="replantings">
+          <div class="tab-actions">
+            <el-button link type="primary" @click="goList('replantings')">查看全部补植记录</el-button>
+          </div>
+          <el-table :data="recentReplantings" size="small" empty-text="暂无补植记录">
+            <el-table-column prop="replant_no" label="编号" width="150" />
+            <el-table-column prop="replant_date" label="补植日期" width="105" />
+            <el-table-column prop="plant_name" label="植株" width="120" />
+            <el-table-column prop="spec" label="规格" min-width="120">
+              <template #default="{ row }">{{ row.spec || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="数量" width="100">
+              <template #default="{ row }">{{ formatNumber(row.quantity) }} {{ row.unit_label }}</template>
+            </el-table-column>
+            <el-table-column prop="supplier" label="供苗单位" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="batch_no" label="批次" min-width="120" show-overflow-tooltip />
+            <el-table-column prop="review_deadline" label="复核期" width="105" />
+            <el-table-column label="成活率" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.low_survival" type="danger" size="small">偏低 {{ row.survival_rate }}%</el-tag>
+                <el-tag v-else-if="row.survival_rate !== null" type="success" size="small">{{ row.survival_rate }}%</el-tag>
+                <el-tag v-else type="info" size="small">
+                  {{ row.review_status === 'overdue' ? '复核逾期' : '待复核' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
       </el-tabs>
     </div>
 
@@ -157,6 +191,7 @@ const statistics = ref({ task_status: {}, record_count: 0, total_work_hours: 0, 
 const recentTasks = ref([])
 const recentRecords = ref([])
 const recentReplacements = ref([])
+const recentReplantings = ref([])
 const replacementSummary = ref([])
 
 const taskTotal = computed(() =>
@@ -172,6 +207,7 @@ async function load() {
     recentTasks.value = data.recent_tasks || []
     recentRecords.value = data.recent_records || []
     recentReplacements.value = data.recent_replacements || []
+    recentReplantings.value = data.recent_replantings || []
     replacementSummary.value = data.replacement_summary || []
   } finally {
     loading.value = false
@@ -182,6 +218,7 @@ const LIST_ROUTES = {
   tasks: 'task-list',
   records: 'record-list',
   replacements: 'replacement-list',
+  replantings: 'replanting-list',
 }
 
 function goList(name) {

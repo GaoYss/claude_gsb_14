@@ -56,3 +56,11 @@ export function toIsoDate(date) {
 export function today() {
   return toIsoDate(new Date())
 }
+
+/** 在 YYYY-MM-DD 日期上增加 n 天，返回 YYYY-MM-DD。 */
+export function addDays(value, days) {
+  if (!value) return value
+  const date = new Date(`${value}T00:00:00`)
+  date.setDate(date.getDate() + days)
+  return toIsoDate(date)
+}

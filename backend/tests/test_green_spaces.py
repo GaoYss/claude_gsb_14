@@ -124,5 +124,10 @@ def test_delete_is_blocked_until_force(api, make_task):
     assert response.get_json()["data"]["maintenance_task"] == 1
 
     data = api.data(api.delete(f"/api/v1/green-spaces/{space_id}", force="true"))
-    assert data == {"maintenance_task": 1, "maintenance_record": 0, "plant_replacement": 0}
+    assert data == {
+        "maintenance_task": 1,
+        "maintenance_record": 0,
+        "plant_replacement": 0,
+        "replanting": 0,
+    }
     assert api.get(f"/api/v1/green-spaces/{space_id}").status_code == 404

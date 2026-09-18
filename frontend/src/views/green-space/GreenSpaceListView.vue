@@ -76,6 +76,8 @@
               记录 {{ row.statistics.record_count }} 条
             </span>
             <div class="summary-text">
+              更换 {{ row.statistics.replacement_count || 0 }} 条、
+              补植 {{ row.statistics.replanting_count || 0 }} 批 ·
               最近养护：{{ formatDate(row.statistics.last_maintenance_date) }}
             </div>
           </template>
@@ -147,12 +149,17 @@ async function onSaved() {
 }
 
 async function remove(row) {
-  const hasChildren = row.statistics.task_count + row.statistics.record_count + row.statistics.replacement_count > 0
+  const hasChildren =
+    row.statistics.task_count +
+      row.statistics.record_count +
+      row.statistics.replacement_count +
+      (row.statistics.replanting_count || 0) >
+    0
   try {
     if (hasChildren) {
       await ElMessageBox.confirm(
         `该绿地已关联 ${row.statistics.task_count} 项养护任务、${row.statistics.record_count} 条养护记录、` +
-          `${row.statistics.replacement_count} 条更换记录，删除将一并清除，是否继续？`,
+          `${row.statistics.replacement_count} 条更换记录、${row.statistics.replanting_count || 0} 条补植记录，删除将一并清除，是否继续？`,
         '存在关联数据',
         { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' },
       )

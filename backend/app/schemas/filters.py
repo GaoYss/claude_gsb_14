@@ -110,3 +110,22 @@ def replacement_filters(args):
     filters["date_from"] = _date(args, "date_from")
     filters["date_to"] = _date(args, "date_to")
     return filters
+
+
+def replanting_filters(args):
+    filters = {}
+    for key in ("green_space_id", "maintenance_record_id"):
+        value = _int(args, key)
+        if value:
+            filters[key] = value
+    for key, group_key in (("plant_category", "plant_category"), ("source", "plant_source")):
+        value = _enum(args, key, group_key)
+        if value:
+            filters[key] = value
+    for key in ("supplier", "batch_no", "review_status", "keyword"):
+        value = _text(args, key)
+        if value:
+            filters[key] = value
+    filters["date_from"] = _date(args, "date_from")
+    filters["date_to"] = _date(args, "date_to")
+    return filters

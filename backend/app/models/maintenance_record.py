@@ -36,6 +36,7 @@ class MaintenanceRecord(TimestampMixin, db.Model):
     task = db.relationship("MaintenanceTask", back_populates="records")
     green_space = db.relationship("GreenSpace", back_populates="records", lazy="joined")
     replacements = db.relationship("PlantReplacement", back_populates="record")
+    replantings = db.relationship("Replanting", back_populates="record")
 
     def to_dict(self, detail=False):
         data = {

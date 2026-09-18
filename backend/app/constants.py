@@ -130,6 +130,29 @@ MEASURE_UNIT = EnumGroup("measure_unit", [
     ("clump", "丛"),
 ])
 
+# ---------------------------------------------------------------- 补植成活跟踪
+PLANT_SOURCE = EnumGroup("plant_source", [
+    ("nursery", "苗圃采购"),
+    ("base", "自有苗木基地"),
+    ("transfer", "他处调拨"),
+    ("market", "市场采购"),
+])
+
+DEATH_CAUSE = EnumGroup("death_cause", [
+    ("drought", "干旱缺水"),
+    ("waterlogging", "积水烂根"),
+    ("disease", "病虫害"),
+    ("plant_quality", "苗木质量差"),
+    ("transplant", "起苗运输损伤"),
+    ("planting", "栽植不规范"),
+    ("weather", "极端天气"),
+    ("trampling", "人为踩踏破坏"),
+    ("other", "其他原因"),
+])
+
+# 成活率（百分比）低于该阈值时，在按供苗单位 / 批次的汇总中标记为偏低
+LOW_SURVIVAL_THRESHOLD = 85
+
 # 前端下拉与文档共用的一份字典清单
 ENUM_GROUPS = {
     "green_space_type": GREEN_SPACE_TYPE,
@@ -144,6 +167,8 @@ ENUM_GROUPS = {
     "replacement_reason": REPLACEMENT_REASON,
     "old_plant_status": OLD_PLANT_STATUS,
     "measure_unit": MEASURE_UNIT,
+    "plant_source": PLANT_SOURCE,
+    "death_cause": DEATH_CAUSE,
 }
 
 
